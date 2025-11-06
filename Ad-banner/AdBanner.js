@@ -12,5 +12,5 @@ const AdSchema = new mongoose.Schema({
     impressions: { type: Number, default: 0 },
     clicks: { type: Number, default: 0 },
 },{ timestamps: true });
-const Ad = mongoose.model('tbl_Ad', AdSchema);
+const Ad = mongoose.model('tbl_Adbanner', AdSchema);
 module.exports = Ad;
