@@ -6,7 +6,8 @@ const UserSchema = new mongoose.Schema({
     password: { type: String, required: true },
     role: { type: String, enum: ['admin', 'advertiser', 'viewer'], default: 'viewer' },
     isActive: { type: Boolean, default: true },
+    walletBalance: { type: Number, default: 0 }
 },{ timestamps: true });
 
-const User = mongoose.model('tbl_User', UserSchema);
+const User = mongoose.model('tbl_users', UserSchema);
 module.exports = User;
