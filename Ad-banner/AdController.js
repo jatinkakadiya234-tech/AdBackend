@@ -3,27 +3,96 @@ const Ad = require('./AdBanner');
 const AdController = {
   createAd: async (req, res) => {
     try {
-      const { title, width, height, imageUrl, clickUrl, targetDevices, targetPlatforms, schedule } = req.body;
-      
-      if (!title || !width || !height || !imageUrl || !clickUrl) {
-        return res.status(400).json({ message: "Title, width, height, imageUrl, and clickUrl are required" });
+      const { title, width, height, mediaUrl: mediaUrlBody, mediaType: mediaTypeBody, clickUrl, targetDevices, targetPlatforms, schedule } = req.body;
+
+      let mediaUrl = mediaUrlBody;
+      let mediaType = mediaTypeBody;
+
+      if (req.file) {
+        const fileUrl = `${req.protocol}://${req.get('host')}/${req.file.filename}`;
+        mediaUrl = fileUrl;
+        if (req.file.mimetype.startsWith('video/')) {
+          mediaType = 'video';
+        } else if (req.file.mimetype === 'image/gif') {
+          mediaType = 'gif';
+        } else if (req.file.mimetype.startsWith('image/')) {
+          mediaType = 'image';
+        }
       }
 
+      if (!title || !width || !height || !clickUrl || !mediaUrl) {
+        return res.status(400).json({ message: "Title, width, height, mediaUrl (or file), and clickUrl are required" });
+      }
+
+      if (!mediaType) {
+        if (mediaUrl.toLowerCase().endsWith('.mp4') || mediaUrl.toLowerCase().endsWith('.webm') || mediaUrl.toLowerCase().endsWith('.ogg')) {
+          mediaType = 'video';
+        } else if (mediaUrl.toLowerCase().endsWith('.gif')) {
+          mediaType = 'gif';
+        } else {
+          mediaType = 'image';
+        }
+      }
+
+      const embedFor = (platform) => {
+        if (platform === 'react') {
+          if (mediaType === 'video') {
+            return `<a href="${clickUrl}" target="_blank" rel="noopener noreferrer">\n  <video src="${mediaUrl}" width={${width}} height={${height}} controls style={{maxWidth: '100%', height: 'auto'}} />\n</a>`;
+          }
+          return `<a href="${clickUrl}" target="_blank" rel="noopener noreferrer">\n  <img src="${mediaUrl}" width={${width}} height={${height}} alt="${title}" style={{maxWidth: '100%', height: 'auto'}} />\n</a>`;
+        }
+        if (platform === 'php') {
+          if (mediaType === 'video') {
+            return `<?php echo '<a href="${clickUrl}" target="_blank"><video src="${mediaUrl}" width="${width}" height="${height}" controls></video></a>'; ?>`;
+          }
+          return `<?php echo '<a href="${clickUrl}" target="_blank"><img src="${mediaUrl}" width="${width}" height="${height}" alt="${title}" /></a>'; ?>`;
+        }
+        if (platform === 'java') {
+          if (mediaType === 'video') {
+            return `String adHtml = "<a href=\\"${clickUrl}\\" target=\\"_blank\\"><video src=\\"${mediaUrl}\\" width=\\"${width}\\" height=\\"${height}\\" controls></video></a>";`;
+          }
+          return `String adHtml = "<a href=\\"${clickUrl}\\" target=\\"_blank\\"><img src=\\"${mediaUrl}\\" width=\\"${width}\\" height=\\"${height}\\" alt=\\"${title}\\" /></a>";`;
+        }
+        if (platform === 'flutter') {
+          if (mediaType === 'video') {
+            return `GestureDetector(\n  onTap: () => launch('${clickUrl}'),\n  child: Text('Video: ${mediaUrl}'),\n)`;
+          }
+          return `GestureDetector(\n  onTap: () => launch('${clickUrl}'),\n  child: Image.network('${mediaUrl}', width: ${width}, height: ${height})\n)`;
+        }
+        if (platform === 'swift') {
+          if (mediaType === 'video') {
+            return `let label = UILabel()\nlabel.text = "Video: ${mediaUrl}"`;
+          }
+          return `let imageView = UIImageView()\nimageView.sd_setImage(with: URL(string: "${mediaUrl}"))\nlet tapGesture = UITapGestureRecognizer(target: self, action: #selector(openURL))\nimageView.addGestureRecognizer(tapGesture)`;
+        }
+        if (platform === 'mobile') {
+          if (mediaType === 'video') {
+            return `<a href="${clickUrl}" target="_blank"><video src="${mediaUrl}" width="100%" height="auto" controls style="max-width:${width}px;"></video></a>`;
+          }
+          return `<a href="${clickUrl}" target="_blank"><img src="${mediaUrl}" width="100%" height="auto" alt="${title}" style="max-width:${width}px;" /></a>`;
+        }
+        if (mediaType === 'video') {
+          return `<a href="${clickUrl}" target="_blank"><video src="${mediaUrl}" width="${width}" height="${height}" controls></video></a>`;
+        }
+        return `<a href="${clickUrl}" target="_blank"><img src="${mediaUrl}" width="${width}" height="${height}" alt="${title}" /></a>`;
+      };
+
       const embedCodes = {
-        web: `<a href="${clickUrl}" target="_blank"><img src="${imageUrl}" width="${width}" height="${height}" alt="${title}" /></a>`,
-        mobile: `<a href="${clickUrl}" target="_blank"><img src="${imageUrl}" width="100%" height="auto" alt="${title}" style="max-width:${width}px;" /></a>`,
-        react: `<a href="${clickUrl}" target="_blank" rel="noopener noreferrer">\n  <img src="${imageUrl}" width={${width}} height={${height}} alt="${title}" style={{maxWidth: '100%', height: 'auto'}} />\n</a>`,
-        php: `<?php echo '<a href="${clickUrl}" target="_blank"><img src="${imageUrl}" width="${width}" height="${height}" alt="${title}" /></a>'; ?>`,
-        java: `String adHtml = "<a href=\\"${clickUrl}\\" target=\\"_blank\\"><img src=\\"${imageUrl}\\" width=\\"${width}\\" height=\\"${height}\\" alt=\\"${title}\\" /></a>";`,
-        flutter: `GestureDetector(\n  onTap: () => launch('${clickUrl}'),\n  child: Image.network('${imageUrl}', width: ${width}, height: ${height})\n)`,
-        swift: `let imageView = UIImageView()\nimageView.sd_setImage(with: URL(string: "${imageUrl}"))\nlet tapGesture = UITapGestureRecognizer(target: self, action: #selector(openURL))\nimageView.addGestureRecognizer(tapGesture)`
+        web: embedFor('web'),
+        mobile: embedFor('mobile'),
+        react: embedFor('react'),
+        php: embedFor('php'),
+        java: embedFor('java'),
+        flutter: embedFor('flutter'),
+        swift: embedFor('swift')
       };
 
       const newAd = new Ad({
         title,
         width,
         height,
-        imageUrl,
+        mediaUrl,
+        mediaType,
         clickUrl,
         createdBy: req.user.id,
         targetDevices: targetDevices || ['web', 'mobile'],
@@ -124,33 +193,102 @@ const AdController = {
   updateAd: async (req, res) => {
     try {
       const { id } = req.params;
-      const { title, width, height, imageUrl, clickUrl, isActive, targetDevices, targetPlatforms, schedule } = req.body;
+      const { title, width, height, mediaUrl: mediaUrlBody, mediaType: mediaTypeBody, clickUrl, isActive, targetDevices, targetPlatforms, schedule } = req.body;
 
       const ad = await Ad.findOne({ _id: id, createdBy: req.user.id });
       if (!ad) {
         return res.status(404).json({ message: "Ad not found" });
       }
 
+      let mediaUrl = mediaUrlBody;
+      let mediaType = mediaTypeBody;
+
+      if (req.file) {
+        const fileUrl = `${req.protocol}://${req.get('host')}/${req.file.filename}`;
+        mediaUrl = fileUrl;
+        if (req.file.mimetype.startsWith('video/')) {
+          mediaType = 'video';
+        } else if (req.file.mimetype === 'image/gif') {
+          mediaType = 'gif';
+        } else if (req.file.mimetype.startsWith('image/')) {
+          mediaType = 'image';
+        }
+      }
+
       if (title) ad.title = title;
       if (width) ad.width = width;
       if (height) ad.height = height;
-      if (imageUrl) ad.imageUrl = imageUrl;
+      if (mediaUrl) ad.mediaUrl = mediaUrl;
+      if (mediaType) ad.mediaType = mediaType;
       if (clickUrl) ad.clickUrl = clickUrl;
       if (typeof isActive === 'boolean') ad.isActive = isActive;
       if (targetDevices) ad.targetDevices = targetDevices;
       if (targetPlatforms) ad.targetPlatforms = targetPlatforms;
       if (schedule) ad.schedule = { ...ad.schedule, ...schedule };
 
+      if (!ad.mediaType) {
+        if ((ad.mediaUrl || '').toLowerCase().endsWith('.mp4') || (ad.mediaUrl || '').toLowerCase().endsWith('.webm') || (ad.mediaUrl || '').toLowerCase().endsWith('.ogg')) {
+          ad.mediaType = 'video';
+        } else if ((ad.mediaUrl || '').toLowerCase().endsWith('.gif')) {
+          ad.mediaType = 'gif';
+        } else {
+          ad.mediaType = 'image';
+        }
+      }
+
       // Regenerate embed codes if content changed
-      if (title || width || height || imageUrl || clickUrl) {
+      if (title || width || height || mediaUrl || mediaType || clickUrl) {
+        const embedFor = (platform) => {
+          if (platform === 'react') {
+            if (ad.mediaType === 'video') {
+              return `<a href="${ad.clickUrl}" target="_blank" rel="noopener noreferrer">\n  <video src="${ad.mediaUrl}" width={${ad.width}} height={${ad.height}} controls style={{maxWidth: '100%', height: 'auto'}} />\n</a>`;
+            }
+            return `<a href="${ad.clickUrl}" target="_blank" rel="noopener noreferrer">\n  <img src="${ad.mediaUrl}" width={${ad.width}} height={${ad.height}} alt="${ad.title}" style={{maxWidth: '100%', height: 'auto'}} />\n</a>`;
+          }
+          if (platform === 'php') {
+            if (ad.mediaType === 'video') {
+              return `<?php echo '<a href="${ad.clickUrl}" target="_blank"><video src="${ad.mediaUrl}" width="${ad.width}" height="${ad.height}" controls></video></a>'; ?>`;
+            }
+            return `<?php echo '<a href="${ad.clickUrl}" target="_blank"><img src="${ad.mediaUrl}" width="${ad.width}" height="${ad.height}" alt="${ad.title}" /></a>'; ?>`;
+          }
+          if (platform === 'java') {
+            if (ad.mediaType === 'video') {
+              return `String adHtml = "<a href=\\"${ad.clickUrl}\\" target=\\"_blank\\"><video src=\\"${ad.mediaUrl}\\" width=\\"${ad.width}\\" height=\\"${ad.height}\\" controls></video></a>";`;
+            }
+            return `String adHtml = "<a href=\\"${ad.clickUrl}\\" target=\\"_blank\\"><img src=\\"${ad.mediaUrl}\\" width=\\"${ad.width}\\" height=\\"${ad.height}\\" alt=\\"${ad.title}\\" /></a>";`;
+          }
+          if (platform === 'flutter') {
+            if (ad.mediaType === 'video') {
+              return `GestureDetector(\n  onTap: () => launch('${ad.clickUrl}'),\n  child: Text('Video: ${ad.mediaUrl}'),\n)`;
+            }
+            return `GestureDetector(\n  onTap: () => launch('${ad.clickUrl}'),\n  child: Image.network('${ad.mediaUrl}', width: ${ad.width}, height: ${ad.height})\n)`;
+          }
+          if (platform === 'swift') {
+            if (ad.mediaType === 'video') {
+              return `let label = UILabel()\nlabel.text = "Video: ${ad.mediaUrl}"`;
+            }
+            return `let imageView = UIImageView()\nimageView.sd_setImage(with: URL(string: "${ad.mediaUrl}"))\nlet tapGesture = UITapGestureRecognizer(target: self, action: #selector(openURL))\nimageView.addGestureRecognizer(tapGesture)`;
+          }
+          if (platform === 'mobile') {
+            if (ad.mediaType === 'video') {
+              return `<a href="${ad.clickUrl}" target="_blank"><video src="${ad.mediaUrl}" width="100%" height="auto" controls style="max-width:${ad.width}px;"></video></a>`;
+            }
+            return `<a href="${ad.clickUrl}" target="_blank"><img src="${ad.mediaUrl}" width="100%" height="auto" alt="${ad.title}" style="max-width:${ad.width}px;" /></a>`;
+          }
+          if (ad.mediaType === 'video') {
+            return `<a href="${ad.clickUrl}" target="_blank"><video src="${ad.mediaUrl}" width="${ad.width}" height="${ad.height}" controls></video></a>`;
+          }
+          return `<a href="${ad.clickUrl}" target="_blank"><img src="${ad.mediaUrl}" width="${ad.width}" height="${ad.height}" alt="${ad.title}" /></a>`;
+        };
+
         ad.embedCodes = {
-          web: `<a href="${ad.clickUrl}" target="_blank"><img src="${ad.imageUrl}" width="${ad.width}" height="${ad.height}" alt="${ad.title}" /></a>`,
-          mobile: `<a href="${ad.clickUrl}" target="_blank"><img src="${ad.imageUrl}" width="100%" height="auto" alt="${ad.title}" style="max-width:${ad.width}px;" /></a>`,
-          react: `<a href="${ad.clickUrl}" target="_blank" rel="noopener noreferrer">\n  <img src="${ad.imageUrl}" width={${ad.width}} height={${ad.height}} alt="${ad.title}" style={{maxWidth: '100%', height: 'auto'}} />\n</a>`,
-          php: `<?php echo '<a href="${ad.clickUrl}" target="_blank"><img src="${ad.imageUrl}" width="${ad.width}" height="${ad.height}" alt="${ad.title}" /></a>'; ?>`,
-          java: `String adHtml = "<a href=\\"${ad.clickUrl}\\" target=\\"_blank\\"><img src=\\"${ad.imageUrl}\\" width=\\"${ad.width}\\" height=\\"${ad.height}\\" alt=\\"${ad.title}\\" /></a>";`,
-          flutter: `GestureDetector(\n  onTap: () => launch('${ad.clickUrl}'),\n  child: Image.network('${ad.imageUrl}', width: ${ad.width}, height: ${ad.height})\n)`,
-          swift: `let imageView = UIImageView()\nimageView.sd_setImage(with: URL(string: "${ad.imageUrl}"))\nlet tapGesture = UITapGestureRecognizer(target: self, action: #selector(openURL))\nimageView.addGestureRecognizer(tapGesture)`
+          web: embedFor('web'),
+          mobile: embedFor('mobile'),
+          react: embedFor('react'),
+          php: embedFor('php'),
+          java: embedFor('java'),
+          flutter: embedFor('flutter'),
+          swift: embedFor('swift')
         };
       }
 
