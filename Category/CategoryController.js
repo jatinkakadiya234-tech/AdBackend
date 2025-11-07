@@ -1,5 +1,6 @@
 
 const Category = require("./CategoryModel");
+
 const CategoryCantroller ={
     createCategory: async (req, res) => {
         try {
@@ -67,11 +68,7 @@ editCategory: async (req, res) => {
     } catch (error) {
         res.status(500).json({ message: "Error updating category", error: error.message });
     }   
-}
-
-
-
-
+  }
 }
 
 module.exports = CategoryCantroller;
