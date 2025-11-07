@@ -1,5 +1,4 @@
 const { default: mongoose } = require("mongoose");
-const { active } = require("wd/lib/commands");
 
 const categorySchema = new mongoose.Schema({
   name: {
