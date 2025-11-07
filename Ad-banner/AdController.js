@@ -110,69 +110,74 @@ const AdController = {
   },
 
   getAdByDevice: async (req, res) => {
-    try {
-      const { device, platform } = req.query;
-      const { id } = req.params;
-      
-      if (!id || id.length !== 24 || !/^[0-9a-fA-F]{24}$/.test(id)) {
-        return res.status(400).json({ message: "Invalid Ad ID format" });
+  try {
+    const { device, platform } = req.query;
+    const { id } = req.params;
+
+    // ✅ Validate ID format
+    if (!id || id.length !== 24 || !/^[0-9a-fA-F]{24}$/.test(id)) {
+      return res.status(400).json({ message: "Invalid Ad ID format" });
+    }
+
+    // ✅ Find Ad
+    const ad = await Ad.findById(id);
+    if (!ad || !ad.isActive) {
+      return res.status(404).json({ message: "Ad not found or inactive" });
+    }
+
+    // ✅ Device & Platform Filtering
+    if (device && !ad.targetDevices.includes(device)) {
+      return res.status(400).json({ message: `Ad not available for ${device} devices` });
+    }
+    if (platform && !ad.targetPlatforms.includes(platform)) {
+      return res.status(400).json({ message: `Ad not available for ${platform} platform` });
+    }
+
+    // ✅ Schedule Check
+    if (ad.schedule.isScheduled) {
+      const now = new Date();
+      if (ad.schedule.startDate && now < ad.schedule.startDate) {
+        return res.status(400).json({ message: "Ad not yet active" });
       }
-
-      const ad = await Ad.findById(id);
-      if (!ad || !ad.isActive) {
-        return res.status(404).json({ message: "Ad not found or inactive" });
+      if (ad.schedule.endDate && now > ad.schedule.endDate) {
+        return res.status(400).json({ message: "Ad has expired" });
       }
+    }
 
-      // Check if ad supports the requested device
-      if (device && !ad.targetDevices.includes(device)) {
-        return res.status(400).json({ message: `Ad not available for ${device} devices` });
+    // ✅ Select embed code dynamically
+    let embedCode = ad.embedCodes.web;
+    if (platform && ad.embedCodes[platform]) {
+      embedCode = ad.embedCodes[platform];
+    } else if (device === 'mobile') {
+      embedCode = ad.embedCodes.mobile;
+    }
+
+    // ✅ Track impression
+    const updateField = device === 'mobile' ? 'analytics.mobileImpressions' : 'analytics.webImpressions';
+    await Ad.findByIdAndUpdate(id, {
+      $inc: {
+        'analytics.impressions': 1,
+        [updateField]: 1
       }
+    });
 
-      // Check if ad supports the requested platform
-      if (platform && !ad.targetPlatforms.includes(platform)) {
-        return res.status(400).json({ message: `Ad not available for ${platform} platform` });
-      }
-
-      // Check schedule
-      if (ad.schedule.isScheduled) {
-        const now = new Date();
-        if (ad.schedule.startDate && now < ad.schedule.startDate) {
-          return res.status(400).json({ message: "Ad not yet active" });
-        }
-        if (ad.schedule.endDate && now > ad.schedule.endDate) {
-          return res.status(400).json({ message: "Ad has expired" });
-        }
-      }
-
-      let embedCode = ad.embedCodes.web; // default
-      
-      if (platform && ad.embedCodes[platform]) {
-        embedCode = ad.embedCodes[platform];
-      } else if (device === 'mobile') {
-        embedCode = ad.embedCodes.mobile;
-      }
-
-      // Track impression by device
-      const updateField = device === 'mobile' ? 'analytics.mobileImpressions' : 'analytics.webImpressions';
-      await Ad.findByIdAndUpdate(id, { 
-        $inc: { 
-          'analytics.impressions': 1,
-          [updateField]: 1
-        }
-      });
-
-      res.status(200).json({
+    // ✅ Send full ad data + embed code
+    res.status(200).json({
+      message: "Ad fetched successfully",
+      ad: {
+        ...ad.toObject(),
         embedCode,
         device: device || 'web',
-        platform: platform || 'html',
-        adId: id,
-        title: ad.title
-      });
-    } catch (error) {
-      console.log('Error in getAdByDevice:', error);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  },
+        platform: platform || 'html'
+      }
+    });
+
+  } catch (error) {
+    console.log('Error in getAdByDevice:', error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+},
+
 
   getAds: async (req, res) => {
     try {
