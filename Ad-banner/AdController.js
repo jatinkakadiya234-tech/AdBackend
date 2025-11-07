@@ -3,9 +3,10 @@ const Ad = require('./AdBanner');
 const AdController = {
   createAd: async (req, res) => {
     try {
-      const { title, width, height, mediaUrl, mediaType, clickUrl, targetDevices, targetPlatforms, schedule } = req.body;
+      // console.log(req.body);
+      const { title, width, height, mediaUrl, mediaType, clickUrl, targetDevices, targetPlatforms, schedule, category } = req.body;
 
-      if (!title || !width || !height || !mediaUrl || !clickUrl || !mediaType) {
+      if (!title || !width || !height || !mediaUrl || !clickUrl || !mediaType || !category) {
         return res.status(400).json({ message: "Title, width, height, mediaUrl, mediaType, and clickUrl are required" });
       }
 
@@ -30,7 +31,8 @@ const AdController = {
         targetDevices: targetDevices || ['web', 'mobile'],
         targetPlatforms: targetPlatforms || ['html'],
         embedCodes,
-        schedule: schedule || { isScheduled: false }
+        schedule: schedule || { isScheduled: false },
+        category
       });
 
       await newAd.save();
