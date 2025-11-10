@@ -3,18 +3,22 @@ const jwt = require('jsonwebtoken');
 let authmiddleware = (req, res, next) => {
   const token = req.cookies?.token || req.headers.authorization?.split(' ')[1];
     if (!token) {
+        console.log('No token found');
         return res.status(401).json({ message: "Unauthorized" });
     }
-    console.log("token ===========" ,token);
+    console.log("token found:", token.substring(0, 20) + '...');
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        console.log('User:', { id: decoded.id, role: decoded.role });
         if(decoded.role === 'admin' || decoded.role === "advertiser"){
             req.user = decoded;
             next();
         } else {
-            return res.status(403).json({ message: "Forbidden: Admins only" });
+            console.log('Role not authorized:', decoded.role);
+            return res.status(403).json({ message: "Forbidden: Advertisers and Admins only" });
         }
     } catch (error) {
+        console.log('Token error:', error.message);
         return res.status(401).json({ message: "Invalid token" });
     }
 };
