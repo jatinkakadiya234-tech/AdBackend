@@ -10,12 +10,12 @@ let authmiddleware = (req, res, next) => {
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         console.log('User:', { id: decoded.id, role: decoded.role });
-        if(decoded.role === 'admin' || decoded.role === "advertiser"){
+        if(['admin', 'advertiser', 'viewer', 'superadmin', 'publisher'].includes(decoded.role)){
             req.user = decoded;
             next();
         } else {
             console.log('Role not authorized:', decoded.role);
-            return res.status(403).json({ message: "Forbidden: Advertisers and Admins only" });
+            return res.status(403).json({ message: "Forbidden: Invalid role" });
         }
     } catch (error) {
         console.log('Token error:', error.message);

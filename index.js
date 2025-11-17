@@ -14,6 +14,7 @@ const UserRouter = require("./User/UserRoute");
 const AdRouter = require("./Ad-banner/Adrouter");
 const FavoriteRouter = require("./Favorite/FavriteRouter");
 const CategoryRoute = require("./Category/CategoryRoute");
+const JoinRequestRouter = require("./JoinRequest/JoinRequestRoute");
 
 // -------------------------------
 // ⚙️ Load Environment Variables
@@ -46,7 +47,8 @@ app.use(express.static("public"));
 app.use("/api/user", UserRouter); 
 app.use("/api/ad", AdRouter); 
 app.use("/api/favorite", FavoriteRouter);
-app.use("/api/category", CategoryRoute); 
+app.use("/api/category", CategoryRoute);
+app.use("/api/join-request", JoinRequestRouter); 
 
 // -------------------------------
 // 🗄️ Database Connection

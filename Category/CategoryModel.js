@@ -1,4 +1,4 @@
-const { default: mongoose } = require("mongoose");
+const mongoose = require("mongoose");
 
 const categorySchema = new mongoose.Schema({
   name: {
@@ -7,21 +7,24 @@ const categorySchema = new mongoose.Schema({
     unique: true,
     trim: true
   },
-  
+  description: {
+    type: String,
+    trim: true
+  },
   slug: {
     type: String,
-    required: true,
     unique: true
-  },
-  createdAt: {
-    type: Date,
-    dfault: Date.now
   },
   active: {
     type: Boolean,
     default: true
+  },
+  type: {
+    type: String,
+    enum: ["banner", "video", "popup", "native", "display"],
+    default: "banner"
   }
-});
+}, { timestamps: true });
 
 const Category = mongoose.model("tbl_categorys", categorySchema);
 

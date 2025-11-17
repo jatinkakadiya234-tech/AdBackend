@@ -17,5 +17,10 @@ UserRouter.get('/by-device', require('../Config/Midelwere'), UserController.getU
 // Wallet Routes
 UserRouter.post('/wallet/add', require('../Config/Midelwere'), UserController.addWalletBalance);
 UserRouter.get('/wallet/transactions', require('../Config/Midelwere'), UserController.getWalletTransactions);
+UserRouter.get('/wallet', require('../Config/Midelwere'), UserController.getWalletTransactions);
+
+// Dashboard & Analytics Routes
+UserRouter.get('/dashboard-stats', require('../Config/Midelwere'), UserController.getDashboardStats);
+UserRouter.get('/advertiser-analytics', require('../Config/Midelwere'), UserController.getAdvertiserAnalytics);
 
 module.exports = UserRouter;

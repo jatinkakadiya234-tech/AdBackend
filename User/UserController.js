@@ -263,6 +263,45 @@ const UserController = {
     }
   },
 
+  getDashboardStats: async (req, res) => {
+    try {
+      const totalUsers = await User.countDocuments();
+      const activeUsers = await User.countDocuments({ isActive: true });
+      const advertisers = await User.countDocuments({ role: 'advertiser' });
+      const viewers = await User.countDocuments({ role: 'viewer' });
+      
+      res.status(200).json({
+        totalUsers,
+        activeUsers,
+        advertisers,
+        viewers,
+        inactiveUsers: totalUsers - activeUsers
+      });
+    } catch (error) {
+      console.log('Error in getDashboardStats:', error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  },
+
+  getAdvertiserAnalytics: async (req, res) => {
+    try {
+      const user = await User.findById(req.user.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      res.status(200).json({
+        walletBalance: user.wallet.balance,
+        totalTransactions: user.wallet.transactions.length,
+        lastLogin: user.lastLogin,
+        accountCreated: user.createdAt
+      });
+    } catch (error) {
+      console.log('Error in getAdvertiserAnalytics:', error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  },
+
   logout: async (req, res) => {
     try {
       res.clearCookie('token');

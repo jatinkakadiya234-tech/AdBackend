@@ -1,4 +1,4 @@
-const { default: mongoose } = require("mongoose");
+const mongoose = require("mongoose");
 
 const AdSchema = new mongoose.Schema(
   {
@@ -8,10 +8,11 @@ const AdSchema = new mongoose.Schema(
     mediaUrl: { type: String, required: true },
     mediaType: {
       type: String,
-      enum: ["image", "video", "gif"],
+      enum: ["image", "video", " "],
       required: true,
     },
     clickUrl: { type: String, required: true },
+    category: { type: mongoose.Schema.Types.ObjectId, ref: "tbl_categorys", required: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "tbl_users" },
     isActive: { type: Boolean, default: true },
     credit: { type: Number, default: 0, required: true },
@@ -49,6 +50,18 @@ const AdSchema = new mongoose.Schema(
       startDate: { type: Date },
       endDate: { type: Date },
       isScheduled: { type: Boolean, default: false },
+    },
+    wallet: {
+      creationCost: { type: Number, default: 0.50 },
+      totalSpent: { type: Number, default: 0 },
+      balance: { type: Number, default: 0 },
+      recharges: [{
+        amount: { type: Number, required: true },
+        date: { type: Date, default: Date.now },
+        method: { type: String, default: 'manual' },
+        description: { type: String, default: 'Ad wallet recharge' }
+      }],
+      lastPayment: { type: Date, default: Date.now }
     },
   },
   { timestamps: true }

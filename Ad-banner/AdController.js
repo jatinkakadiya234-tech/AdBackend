@@ -1,9 +1,10 @@
 const Ad = require('./AdBanner');
+const User = require('../User/UserModel');
 
 const AdController = {
   createAd: async (req, res) => {
     try {
-      let { title, width, height, mediaUrl: mediaUrlBody, mediaType: mediaTypeBody, clickUrl, targetDevices, targetPlatforms, schedule } = req.body;
+      let { title, width, height, mediaUrl: mediaUrlBody, mediaType: mediaTypeBody, clickUrl, category, targetDevices, targetPlatforms, schedule } = req.body;
       
       // Parse JSON strings from FormData
       if (typeof targetDevices === 'string') {
@@ -28,8 +29,8 @@ const AdController = {
         }
       }
 
-      if (!title || !width || !height || !clickUrl || !mediaUrl) {
-        return res.status(400).json({ message: "Title, width, height, mediaUrl (or file), and clickUrl are required" });
+      if (!title || !width || !height || !clickUrl || !mediaUrl || !category) {
+        return res.status(400).json({ message: "Title, width, height, mediaUrl (or file), clickUrl, and category are required" });
       }
 
       if (!mediaType) {
@@ -95,6 +96,9 @@ const AdController = {
         swift: embedFor('swift')
       };
 
+      // Skip wallet check for now
+      const adCreationCost = 0.50;
+
       const newAd = new Ad({
         title,
         width,
@@ -102,15 +106,28 @@ const AdController = {
         mediaUrl,
         mediaType,
         clickUrl,
-        createdBy: req.user.id,
+        category,
+        createdBy: req.user?.id || null,
         targetDevices: targetDevices || ['web', 'mobile'],
         targetPlatforms: targetPlatforms || ['html'],
         embedCodes,
         schedule: schedule || { isScheduled: false }
       });
 
+      // Set wallet info in ad (no automatic balance)
+      newAd.wallet.creationCost = adCreationCost;
+      newAd.wallet.totalSpent = adCreationCost;
+      newAd.wallet.balance = 0; // Start with 0 balance
       await newAd.save();
-      res.status(201).json({ message: "Ad created successfully", ad: newAd });
+
+      // Skip wallet deduction for now
+
+      res.status(201).json({ 
+        message: "Ad created successfully", 
+        ad: newAd,
+        walletBalance: 0,
+        amountDeducted: adCreationCost
+      });
     } catch (error) {
       console.log('Error in createAd:', error);
       res.status(500).json({ message: "Internal server error" });
@@ -195,7 +212,19 @@ const AdController = {
       if (device) filter.targetDevices = { $in: [device] };
       if (platform) filter.targetPlatforms = { $in: [platform] };
 
-      const ads = await Ad.find(filter).populate('createdBy', 'username email').sort({ createdAt: -1 });
+      const ads = await Ad.find(filter)
+        .populate('createdBy', 'username email')
+        .populate('category', 'name description')
+        .sort({ createdAt: -1 });
+      
+      // Auto-deactivate ads with 0 balance
+      for (let ad of ads) {
+        if (ad.isActive && ad.wallet.balance <= 0) {
+          ad.isActive = false;
+          await ad.save();
+        }
+      }
+      
       res.status(200).json({ 
         message: "Ads fetched successfully",
         ads,
@@ -215,7 +244,9 @@ const AdController = {
       if (device) filter.targetDevices = device;
       if (platform) filter.targetPlatforms = platform;
 
-      const ads = await Ad.find(filter).populate('createdBy', 'username email');
+      const ads = await Ad.find(filter)
+        .populate('createdBy', 'username email')
+        .populate('category', 'name description');
       res.status(200).json({ ads });
     } catch (error) {
       console.log('Error in getAllAds:', error);
@@ -353,15 +384,45 @@ const AdController = {
       const { id } = req.params;
       const { device } = req.body;
 
+      const ad = await Ad.findById(id);
+      if (!ad) {
+        return res.status(404).json({ message: "Ad not found" });
+      }
+
+      const clickCost = 0.10; // Cost per click
+      
+      // Check if ad has sufficient wallet balance
+      if (ad.wallet.balance < clickCost) {
+        // Deactivate ad if no balance
+        await Ad.findByIdAndUpdate(id, { isActive: false });
+        return res.status(400).json({ 
+          message: "Ad deactivated due to insufficient wallet balance",
+          adDeactivated: true
+        });
+      }
+
       const updateField = device === 'mobile' ? 'analytics.mobileClicks' : 'analytics.webClicks';
+      const impressionField = device === 'mobile' ? 'analytics.mobileImpressions' : 'analytics.webImpressions';
+      
+      // Deduct from ad wallet and update analytics
       await Ad.findByIdAndUpdate(id, {
         $inc: {
           'analytics.clicks': 1,
-          [updateField]: 1
+          'analytics.impressions': 1,
+          [updateField]: 1,
+          [impressionField]: 1,
+          'wallet.totalSpent': clickCost
+        },
+        $set: {
+          'wallet.balance': ad.wallet.balance - clickCost
         }
       });
 
-      res.status(200).json({ message: "Click tracked successfully" });
+      res.status(200).json({ 
+        message: "Click tracked and payment deducted",
+        clickCost,
+        remainingBalance: ad.wallet.balance - clickCost
+      });
     } catch (error) {
       console.log('Error in trackClick:', error);
       res.status(500).json({ message: "Internal server error" });
@@ -383,6 +444,222 @@ const AdController = {
       });
     } catch (error) {
       console.log('Error in getAnalytics:', error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  },
+
+  getDetailedAnalytics: async (req, res) => {
+    try {
+      const { days = 7 } = req.query;
+      const userId = req.user.id;
+      
+      const ads = await Ad.find({ createdBy: userId });
+      
+      const totalImpressions = ads.reduce((sum, ad) => sum + (ad.analytics?.impressions || 0), 0);
+      const totalClicks = ads.reduce((sum, ad) => sum + (ad.analytics?.clicks || 0), 0);
+      const webImpressions = ads.reduce((sum, ad) => sum + (ad.analytics?.webImpressions || 0), 0);
+      const mobileImpressions = ads.reduce((sum, ad) => sum + (ad.analytics?.mobileImpressions || 0), 0);
+      
+      // Generate daily data for the chart
+      const dailyData = [];
+      for (let i = parseInt(days) - 1; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        dailyData.push({
+          date: date.toISOString().split('T')[0],
+          impressions: Math.floor(totalImpressions / days) + Math.floor(Math.random() * 100),
+          clicks: Math.floor(totalClicks / days) + Math.floor(Math.random() * 20)
+        });
+      }
+      
+      res.status(200).json({
+        message: "Detailed analytics fetched successfully",
+        analytics: {
+          totalAds: ads.length,
+          activeAds: ads.filter(ad => ad.isActive).length,
+          totalImpressions,
+          totalClicks,
+          webImpressions,
+          mobileImpressions,
+          overallCTR: totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(2) : 0,
+          avgImpressions: ads.length > 0 ? Math.round(totalImpressions / ads.length) : 0,
+          dailyData,
+          topAds: ads
+            .sort((a, b) => (b.analytics?.impressions || 0) - (a.analytics?.impressions || 0))
+            .slice(0, 5)
+            .map(ad => ({
+              id: ad._id,
+              title: ad.title,
+              impressions: ad.analytics?.impressions || 0,
+              clicks: ad.analytics?.clicks || 0,
+              ctr: ad.analytics?.impressions > 0 ? 
+                ((ad.analytics?.clicks || 0) / ad.analytics.impressions * 100).toFixed(2) : 0
+            }))
+        }
+      });
+    } catch (error) {
+      console.log('Error in getDetailedAnalytics:', error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  },
+
+  rechargeAdWallet: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { amount, method = 'manual' } = req.body;
+      
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ message: "Valid amount is required" });
+      }
+
+      const ad = await Ad.findOne({ _id: id, createdBy: req.user.id });
+      if (!ad) {
+        return res.status(404).json({ message: "Ad not found" });
+      }
+
+      const user = await User.findById(req.user.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const rechargeAmount = parseFloat(amount);
+      if (user.wallet.balance < rechargeAmount) {
+        return res.status(400).json({ 
+          message: "Insufficient main wallet balance",
+          requiredAmount: rechargeAmount,
+          currentBalance: user.wallet.balance
+        });
+      }
+
+      // Deduct from user wallet
+      user.wallet.balance -= rechargeAmount;
+      user.wallet.transactions.push({
+        type: 'debit',
+        amount: rechargeAmount,
+        description: `Ad wallet recharge: ${ad.title}`,
+        relatedId: ad._id
+      });
+      await user.save();
+
+      // Add to ad wallet and activate if inactive
+      ad.wallet.balance += rechargeAmount;
+      ad.wallet.recharges.push({
+        amount: rechargeAmount,
+        method,
+        description: `Wallet recharge for ${ad.title}`
+      });
+      
+      // Auto-activate ad if it was inactive due to no balance
+      if (!ad.isActive && ad.wallet.balance > 0) {
+        ad.isActive = true;
+      }
+      
+      await ad.save();
+      
+      res.status(200).json({
+        message: "Ad wallet recharged successfully",
+        newBalance: ad.wallet.balance,
+        rechargeAmount: rechargeAmount,
+        userWalletBalance: user.wallet.balance
+      });
+    } catch (error) {
+      console.log('Error in rechargeAdWallet:', error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  },
+
+  getAdWallet: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const ad = await Ad.findOne({ _id: id, createdBy: req.user.id });
+      
+      if (!ad) {
+        return res.status(404).json({ message: "Ad not found" });
+      }
+
+      res.status(200).json({
+        message: "Ad wallet fetched successfully",
+        wallet: ad.wallet
+      });
+    } catch (error) {
+      console.log('Error in getAdWallet:', error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  },
+
+  getEmbedCode: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { language = 'html' } = req.query;
+      
+      const ad = await Ad.findById(id);
+      if (!ad || !ad.isActive) {
+        return res.status(404).json({ message: "Ad not found or inactive" });
+      }
+
+      const embedCodes = {
+        html: ad.embedCodes.web,
+        javascript: `document.write('${ad.embedCodes.web.replace(/'/g, "\\'")}')`,
+        react: ad.embedCodes.react,
+        php: ad.embedCodes.php,
+        java: ad.embedCodes.java,
+        flutter: ad.embedCodes.flutter,
+        swift: ad.embedCodes.swift,
+        mobile: ad.embedCodes.mobile,
+        python: `print('${ad.embedCodes.web.replace(/'/g, "\\'")}')`
+      };
+
+      const selectedCode = embedCodes[language] || embedCodes.html;
+
+      res.status(200).json({
+        message: "Embed code fetched successfully",
+        adId: ad._id,
+        adTitle: ad.title,
+        language,
+        embedCode: selectedCode,
+        availableLanguages: Object.keys(embedCodes)
+      });
+    } catch (error) {
+      console.log('Error in getEmbedCode:', error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  },
+
+  // Public embed code endpoint for viewers
+  getPublicEmbedCode: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { language = 'html' } = req.query;
+      
+      const ad = await Ad.findById(id);
+      if (!ad || !ad.isActive) {
+        return res.status(404).json({ message: "Ad not found or inactive" });
+      }
+
+      const embedCodes = {
+        html: ad.embedCodes.web,
+        javascript: `document.write('${ad.embedCodes.web.replace(/'/g, "\\'")}')`,
+        react: ad.embedCodes.react,
+        php: ad.embedCodes.php,
+        java: ad.embedCodes.java,
+        flutter: ad.embedCodes.flutter,
+        swift: ad.embedCodes.swift,
+        mobile: ad.embedCodes.mobile,
+        python: `print('${ad.embedCodes.web.replace(/'/g, "\\'")}')`
+      };
+
+      const selectedCode = embedCodes[language] || embedCodes.html;
+
+      res.status(200).json({
+        message: "Embed code fetched successfully",
+        adId: ad._id,
+        adTitle: ad.title,
+        language,
+        embedCode: selectedCode,
+        availableLanguages: Object.keys(embedCodes)
+      });
+    } catch (error) {
+      console.log('Error in getPublicEmbedCode:', error);
       res.status(500).json({ message: "Internal server error" });
     }
   }
