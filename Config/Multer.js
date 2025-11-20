@@ -1,3 +1,4 @@
+const { error } = require('console');
 const multer = require('multer');
 const path = require('path');
 
@@ -19,6 +20,7 @@ const fileFilter = (req, file, cb) => {
     cb(null, true);
   } else {
     cb(new Error('Only image and video files are allowed!'), false);
+    console.log(error);
   }
 };
 

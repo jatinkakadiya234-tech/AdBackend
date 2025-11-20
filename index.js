@@ -11,10 +11,8 @@ const Db = require("./Config/Db");
 // 📦 Import Routes
 // -------------------------------
 const UserRouter = require("./User/UserRoute");
-const AdRouter = require("./Ad-banner/Adrouter");
-const FavoriteRouter = require("./Favorite/FavriteRouter");
 const CategoryRoute = require("./Category/CategoryRoute");
-const JoinRequestRouter = require("./JoinRequest/JoinRequestRoute");
+const CampaignRouter = require("./Campaign/CampaignRoute");
 
 // -------------------------------
 // ⚙️ Load Environment Variables
@@ -44,11 +42,9 @@ app.use(express.static("public"));
 // -------------------------------
 // 🔗 Register API Routes
 // -------------------------------
-app.use("/api/user", UserRouter); 
-app.use("/api/ad", AdRouter); 
-app.use("/api/favorite", FavoriteRouter);
-app.use("/api/category", CategoryRoute);
-app.use("/api/join-request", JoinRequestRouter); 
+if (UserRouter && typeof UserRouter === 'function') app.use("/api/user", UserRouter); 
+if (CategoryRoute && typeof CategoryRoute === 'function') app.use("/api/category", CategoryRoute);
+if (CampaignRouter && typeof CampaignRouter === 'function') app.use("/api/campaign", CampaignRouter); 
 
 // -------------------------------
 // 🗄️ Database Connection

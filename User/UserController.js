@@ -38,7 +38,7 @@ const UserController = {
 
       let hashedPassword = await bcrypt.hash(trimmedData.password, 10);
       
-      const newUser = new User({
+        const newUser = new User({
         username: trimmedData.username,
         email: trimmedData.email,
         password: hashedPassword,
@@ -118,6 +118,14 @@ const UserController = {
       if (!user.isActive) {
         return res.status(400).json({ message: "Account is deactivated" });
       }
+
+      if (user.isBanned) {
+        return res.status(403).json({ 
+          message: "Account is banned", 
+          banReason: user.banReason,
+          bannedAt: user.bannedAt
+        });
+      }
       
       const isMatch = await bcrypt.compare(trimmedPassword, user.password);
       if (!isMatch) {
@@ -160,6 +168,7 @@ const UserController = {
   getProfile: async (req, res) => {
     try {
       const user = await User.findById(req.user.id).select('-password');
+      console.log('User:', user);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
@@ -172,7 +181,7 @@ const UserController = {
 
   updateProfile: async (req, res) => {
     try {
-      const { profile, preferences } = req.body;
+      const { profile, preferences, publisherProfile } = req.body;
       
       const user = await User.findById(req.user.id);
       if (!user) {
@@ -187,8 +196,22 @@ const UserController = {
         user.preferences = { ...user.preferences, ...preferences };
       }
 
+      if (publisherProfile) {
+        user.publisherProfile = { ...user.publisherProfile, ...publisherProfile };
+      }
+
       await user.save();
-      res.status(200).json({ message: "Profile updated successfully", user: user });
+      
+      // Check if profile is now complete
+      const isComplete = !!(user.profile?.firstName && 
+                           user.profile?.lastName && 
+                           user.profile?.phone);
+      
+      res.status(200).json({ 
+        message: "Profile updated successfully", 
+        user: user,
+        profileComplete: isComplete
+      });
     } catch (error) {
       console.log('Error in updateProfile:', error);
       res.status(500).json({ message: "Internal server error" });
@@ -308,6 +331,182 @@ const UserController = {
       res.status(200).json({ message: "Logged out successfully" });
     } catch (error) {
       console.log('Error in logout:', error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  },
+
+  // Get all users (admin)
+  getAllUsers: async (req, res) => {
+    try {
+      const users = await User.find({}).select('-password').sort({ createdAt: -1 });
+      res.status(200).json({ users, count: users.length });
+    } catch (error) {
+      console.log('Error in getAllUsers:', error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  },
+
+  // Toggle user active status
+  toggleUserStatus: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const user = await User.findById(id);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      user.isActive = !user.isActive;
+      await user.save();
+
+      res.status(200).json({ 
+        message: `User ${user.isActive ? 'activated' : 'deactivated'} successfully`,
+        user: { id: user._id, username: user.username, isActive: user.isActive }
+      });
+    } catch (error) {
+      console.log('Error in toggleUserStatus:', error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  },
+
+  // Get users by role
+  getUsersByRole: async (req, res) => {
+    try {
+      const { role } = req.query;
+      
+      if (!role) {
+        return res.status(400).json({ message: "Role parameter is required" });
+      }
+
+      const users = await User.find({ role }).select('-password').sort({ createdAt: -1 });
+      
+      res.status(200).json({ 
+        message: `Users with role ${role} fetched successfully`,
+        users, 
+        count: users.length 
+      });
+    } catch (error) {
+      console.log('Error in getUsersByRole:', error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  },
+
+  // Ban user
+  banUser: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body;
+      
+      const user = await User.findById(id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (user.isBanned) {
+        return res.status(400).json({ message: "User is already banned" });
+      }
+
+      user.isBanned = true;
+      user.banReason = reason || 'No reason provided';
+      user.bannedAt = new Date();
+      user.bannedBy = req.user.id;
+      user.isActive = false;
+      
+      await user.save();
+
+      res.status(200).json({ 
+        message: "User banned successfully",
+        user: { id: user._id, username: user.username, isBanned: user.isBanned }
+      });
+    } catch (error) {
+      console.log('Error in banUser:', error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  },
+
+  // Unban user
+  unbanUser: async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const user = await User.findById(id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (!user.isBanned) {
+        return res.status(400).json({ message: "User is not banned" });
+      }
+
+      user.isBanned = false;
+      user.banReason = null;
+      user.bannedAt = null;
+      user.bannedBy = null;
+      user.isActive = true;
+      
+      await user.save();
+
+      res.status(200).json({ 
+        message: "User unbanned successfully",
+        user: { id: user._id, username: user.username, isBanned: user.isBanned }
+      });
+    } catch (error) {
+      console.log('Error in unbanUser:', error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  },
+
+  // Delete user (admin only)
+  deleteUser: async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const user = await User.findById(id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      await User.findByIdAndDelete(id);
+
+      res.status(200).json({ 
+        message: "User deleted successfully"
+      });
+    } catch (error) {
+      console.log('Error in deleteUser:', error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  },
+
+  // Check publisher profile completion
+  checkPublisherProfile: async (req, res) => {
+    try {
+      const user = await User.findById(req.user.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      let isComplete = true;
+      
+      if (user.role === 'publisher') {
+        // Check basic profile
+        const hasBasicProfile = !!(user.profile?.firstName && 
+                                  user.profile?.lastName && 
+                                  user.profile?.phone);
+        
+        // For now, just check basic profile. Publisher can complete detailed profile later
+        isComplete = hasBasicProfile;
+      }
+
+      res.status(200).json({
+        profileStatus: {
+          isComplete,
+          role: user.role,
+          profile: user.profile,
+          publisherProfile: user.publisherProfile
+        }
+      });
+    } catch (error) {
+      console.log('Error in checkPublisherProfile:', error);
       res.status(500).json({ message: "Internal server error" });
     }
   }

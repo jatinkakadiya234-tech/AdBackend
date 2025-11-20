@@ -85,9 +85,14 @@ const JoinRequestController = {
   getStats: async (req, res) => {
     try {
       const totalRequests = await JoinRequest.countDocuments();
+      console.log('Total Requests:', totalRequests);
       const pendingRequests = await JoinRequest.countDocuments({ status: 'pending' });
+      console.log('Pending Requests:', pendingRequests);
       const approvedRequests = await JoinRequest.countDocuments({ status: 'approved' });
+      console.log('Approved Requests:', approvedRequests);
       const rejectedRequests = await JoinRequest.countDocuments({ status: 'rejected' });
+
+      console.log('Rejected Requests:', rejectedRequests); 
 
       res.status(200).json({
         totalRequests,
