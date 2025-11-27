@@ -2,6 +2,7 @@ const { default: mongoose } = require("mongoose");
 
 const UserSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true },
+    userid: { type: String,  unique: true },
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     role: { type: String, enum: ['admin', 'viewer', 'publisher'], default: 'viewer' },
@@ -74,6 +75,39 @@ const UserSchema = new mongoose.Schema({
         lastIP: { type: String }
     }
 },{ timestamps: true });
+
+
+
+/**
+ * AUTO-GENERATE USERID BASED ON ROLE AND DATE
+ * Example:
+ *   Pub-070212-01  → publisher
+ *   View-070212-01 → viewer
+ */
+UserSchema.pre("save", async function (next) {
+  if (this.isNew && !this.userid) {
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = String(now.getFullYear()).slice(-2);
+
+    // role-based prefix
+    let prefix = "USR";
+    if (this.role === "publisher") prefix = "Pub";
+    else if (this.role === "viewer") prefix = "View";
+    else if (this.role === "admin") prefix = "Adm";
+
+    // count users created today with the same role
+    const dateString = `${day}${month}${year}`;
+    const regex = new RegExp(`^${prefix}-${dateString}-`, "i");
+    const count = await mongoose.model("tbl_users").countDocuments({ userid: { $regex: regex } });
+
+    const sequence = String(count + 1).padStart(2, "0"); // e.g., 01, 02, 03
+    this.userid = `${prefix}-${dateString}-${sequence}`;
+  }
+  next();
+});
+
 
 const User = mongoose.model('tbl_users', UserSchema);
 module.exports = User;

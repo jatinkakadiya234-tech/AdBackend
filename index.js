@@ -64,3 +64,93 @@ app.get("/", (req, res) => {
 app.listen(PORT, () => {
   console.log(`✅ Server is running on port ${PORT}`);
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// // app.js
+
+// const express = require('express');
+// const cors = require('cors');
+// const helmet = require('helmet');
+// const mongoSanitize = require('express-mongo-sanitize');
+// const dotenv = require('dotenv');
+// const routes = require('./routes');
+
+// dotenv.config();
+
+// const app = express();
+
+// // Security middleware
+// app.use(helmet());
+// app.use(mongoSanitize());
+
+// // CORS configuration
+// app.use(cors({
+//   origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'],
+//   credentials: true
+// }));
+
+// // Body parsing middleware
+// app.use(express.json({ limit: '50mb' }));
+// app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// // Request logging (optional)
+// app.use((req, res, next) => {
+//   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+//   next();
+// });
+
+// // Health check endpoint
+// app.get('/health', (req, res) => {
+//   res.json({ status: 'OK', timestamp: new Date().toISOString() });
+// });
+
+// // API routes
+// app.use('/api', routes);
+
+// // Error handling middleware
+// app.use((err, req, res, next) => {
+//   console.error('Error:', err);
+  
+//   if (err instanceof multer.MulterError) {
+//     return res.status(400).json({
+//       success: false,
+//       message: err.message
+//     });
+//   }
+  
+//   res.status(500).json({
+//     success: false,
+//     message: err.message || 'Internal server error'
+//   });
+// });
+
+// // 404 handler
+// app.use((req, res) => {
+//   res.status(404).json({
+//     success: false,
+//     message: 'Route not found'
+//   });
+// });
+
+// module.exports = app;
